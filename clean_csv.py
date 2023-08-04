@@ -1,5 +1,6 @@
 import pandas as pd
 import sys
+from sklearn.model_selection import train_test_split
 
 
 def main(argv):
@@ -8,7 +9,9 @@ def main(argv):
     except IndexError:
         print("This script requires one argument: path to a source file")
         sys.exit()
-    new_file = original_file.replace(".csv", "_cleaned.csv")
+    new_file_train = original_file.replace(".csv", "_train.csv")
+    new_file_test = original_file.replace(".csv", "_validation.csv")
+
 
     try:
         df = pd.read_csv(original_file)
@@ -29,7 +32,14 @@ def main(argv):
     correct_targets = df['target'].isin([0, 1])
     df = df[correct_targets]
 
-    df.to_csv(new_file, index=False)
+    X = df['question_text']
+    y = df['target']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=23, shuffle=True, stratify=y)
+
+    df_train = pd.concat([X_train, y_train], axis=1)
+    df_test = pd.concat([X_test, y_test], axis=1)
+    df_train.to_csv(new_file_train, index=False)
+    df_test.to_csv(new_file_test, index=False)
 
     print("File cleaned and saved.")
     print(f"Total number of datapoints after cleaning: {len(df):,}")
