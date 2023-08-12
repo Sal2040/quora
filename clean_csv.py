@@ -12,7 +12,6 @@ def main(argv):
     new_file_train = original_file.replace(".csv", "_train.csv")
     new_file_test = original_file.replace(".csv", "_validation.csv")
 
-
     try:
         df = pd.read_csv(original_file)
         df = df[['question_text', 'target']]
