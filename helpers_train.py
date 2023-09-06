@@ -4,6 +4,7 @@ import tensorflow_text
 import tensorflow_models as tfm
 import numpy as np
 
+
 class F1Score(tf.keras.metrics.Metric):
     def __init__(self, name='f1', **kwargs):
         super().__init__(name=name, **kwargs)
@@ -37,6 +38,7 @@ def cast_target(features, target):
     target = tf.cast(target, tf.float32)  # cast target column to float32
     return features, target
 
+
 def make_dataset():
     ds_train = tf.data.experimental.make_csv_dataset(INPUT_CSV_TRAIN, batch_size=BATCH_SIZE, label_name="target", num_epochs=1)
     ds_train = ds_train.map(cast_target)
@@ -47,6 +49,7 @@ def make_dataset():
     ds_test = ds_test.shuffle(buffer_size=60)
 
     return ds_train, ds_test
+
 
 def make_model():
     initial_bias = np.log([POS/NEG])
