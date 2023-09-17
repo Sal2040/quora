@@ -3,6 +3,7 @@ import tensorflow_hub as hub
 import tensorflow_text
 import tensorflow_models as tfm
 import numpy as np
+from abstract_classes import Model
 
 
 class F1Score(tf.keras.metrics.Metric):
@@ -33,38 +34,69 @@ class F1Score(tf.keras.metrics.Metric):
         self.false_positive.assign_add(false_positive)
         self.false_negative.assign_add(false_negative)
 
+    def result(self):
+        epsilon = 1e-15
+        precision = self.true_positive / (self.true_positive + self.false_positive + epsilon)
+        recall = self.true_positive / (self.true_positive + self.false_negative + epsilon)
+        f1 = 2 / ((1 / (precision + epsilon)) + (1 / (recall + epsilon)))
+        return f1
 
-def cast_target(features, target):
-    target = tf.cast(target, tf.float32)  # cast target column to float32
-    return features, target
-
-
-def make_dataset():
-    ds_train = tf.data.experimental.make_csv_dataset(INPUT_CSV_TRAIN, batch_size=BATCH_SIZE, label_name="target", num_epochs=1)
-    ds_train = ds_train.map(cast_target)
-    ds_train = ds_train.shuffle(buffer_size=60)
-
-    ds_test = tf.data.experimental.make_csv_dataset(INPUT_CSV_TEST, batch_size=BATCH_SIZE, label_name="target", num_epochs=1)
-    ds_test = ds_test.map(cast_target)
-    ds_test = ds_test.shuffle(buffer_size=60)
-
-    return ds_train, ds_test
+    def reset_state(self):
+        self.true_positive.assign(0)
+        self.false_positive.assign(0)
+        self.false_negative.assign(0)
 
 
-def make_model():
-    initial_bias = np.log([POS/NEG])
-    initial_bias = tf.keras.initializers.Constant(initial_bias)
+class ModelTFHub(Model):
+    def __init__(self,
+                 preprocessor_handle,
+                 encoder_handle,
+                 size_pos,
+                 size_neg,
+                 dropout=0.2,
+                 fine_tuning=False):
+        self._size_pos = size_pos
+        self._size_neg = size_neg
+        self._initial_bias = self._calculate_initial_bias(size_pos, size_neg)
+        self._fine_tuning = fine_tuning
 
-    preprocessor = hub.KerasLayer(PREPROCESSOR_HANDLE, name='tokenizer')
-    encoder = hub.KerasLayer(ENCODER_HANDLE, trainable=FINE_TUNING, name='encoder')
+        preprocessor = hub.KerasLayer(preprocessor_handle, name='tokenizer')
+        encoder = hub.KerasLayer(encoder_handle, trainable=fine_tuning, name='encoder')
+        text_input = tf.keras.layers.Input(shape=(), dtype=tf.string, name='question_text')
+        encoder_inputs = preprocessor(text_input)
+        outputs = encoder(encoder_inputs)
+        pooled_output = outputs["pooled_output"]  # [batch_size, 768].
+        regularized_output = tf.keras.layers.Dropout(dropout)(pooled_output)
+        final_output = tf.keras.layers.Dense(1, activation='sigmoid', bias_initializer=self._initial_bias)(regularized_output)
 
-    text_input = tf.keras.layers.Input(shape=(), dtype=tf.string, name='question_text')
-    encoder_inputs = preprocessor(text_input)
-    outputs = encoder(encoder_inputs)
-    pooled_output = outputs["pooled_output"]  # [batch_size, 768].
-    regularized_output = tf.keras.layers.Dropout(0.2)(pooled_output)
-    final_output = tf.keras.layers.Dense(1, activation='sigmoid', bias_initializer=initial_bias)(regularized_output)
-    return tf.keras.Model(text_input, final_output)
+        self._model = tf.keras.Model(text_input, final_output)
+
+
+        def _calculate_initial_bias(self, size_pos, size_neg):
+            initial_bias = np.log([size_pos / size_neg])
+            return tf.keras.initializers.Constant(initial_bias)
+
+        @property
+        def size_pos(self):
+            return self._size_pos
+
+        @size_pos.setter
+        def size_pos(self, value):
+            self._size_pos = value
+            self._initial_bias = self._calculate_initial_bias(self._size_pos, self._size_neg)
+
+        @property
+        def size_neg(self):
+            return self._size_neg
+
+        @size_neg.setter
+        def size_neg(self, value):
+            self._size_neg = value
+            self._initial_bias = self._calculate_initial_bias(self._size_pos, self._size_neg)
+
+
+
+
 
 
 def train_model(model, ds_train, ds_test):
