@@ -7,7 +7,7 @@ class Model(ABC):
         pass
 
     @abstractmethod
-    def train(self):
+    def train(self, *args, **kwargs):
         pass
 
     @abstractmethod
@@ -18,3 +18,10 @@ class Model(ABC):
     def evaluate(self):
         pass
 
+    @abstractmethod
+    def load(self, file_path):
+        pass
+
+    @abstractmethod
+    def save(self, file_path):
+        pass
