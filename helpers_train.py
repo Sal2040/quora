@@ -38,8 +38,7 @@ class F1Score(tf.keras.metrics.Metric):
         epsilon = 1e-15
         precision = self.true_positive / (self.true_positive + self.false_positive + epsilon)
         recall = self.true_positive / (self.true_positive + self.false_negative + epsilon)
-        f1 = 2 / ((1 / (precision + epsilon)) + (1 / (recall + epsilon)))
-        return f1
+        return 2 / ((1 / (precision + epsilon)) + (1 / (recall + epsilon)))
 
     def reset_state(self):
         self.true_positive.assign(0)
@@ -66,37 +65,40 @@ class ModelTFHub(Model):
 
         self._model = tf.keras.Model(text_input, final_output)
 
-
     def train(self,
               ds_train,
               ds_test,
+              batch_size,
+              epochs,
+              class_weight,
+              learning_rate,
               train_size_pos=None,
               train_size_neg=None,
-              batch_size=None,
-              epochs=None,
               tensorboard_dir=None,
-              min_delta=0.0001,
+              min_f1_delta=0.0001,
               verbose=1,
               patience=5
               ):
-        train_data_size = train_size_pos + train_size_neg
-        initial_bias = self._calculate_initial_bias(train_size_pos, train_size_neg)
-        last_layer = self._model.get_layer(name='dense_last')
-        last_layer.bias_initializer = initial_bias
+        ds_train = ds_train.batch(batch_size)
+        ds_test = ds_test.batch(batch_size)
+
+        if train_size_pos and train_size_neg:
+            train_data_size = train_size_pos + train_size_neg
+            initial_bias = self._calculate_initial_bias(train_size_pos, train_size_neg)
+            last_layer = self._model.get_layer(name='dense_last')
+            last_layer.bias_initializer = initial_bias
+        else:
+            train_data_size = sum(1 for _ in ds_train)
+
+        steps_per_epoch = int(train_data_size / batch_size)
 
         f1 = F1Score()
         loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
 
-        weight_for_0 = (1 / train_size_neg) * (train_data_size / 2.0)
-        weight_for_1 = (1 / train_size_pos) * (train_data_size / 2.0)
-
-        class_weight = {0: weight_for_0, 1: weight_for_1}
-
         if self._fine_tuning:
-            steps_per_epoch = int(train_data_size / batch_size)
             num_train_steps = steps_per_epoch * epochs
             warmup_steps = int(0.1 * num_train_steps)
-            initial_learning_rate = 2e-5
+            initial_learning_rate = learning_rate
 
             linear_decay = tf.keras.optimizers.schedules.PolynomialDecay(
                 initial_learning_rate=initial_learning_rate,
@@ -112,11 +114,11 @@ class ModelTFHub(Model):
             optimizer = tf.keras.optimizers.Adam(learning_rate=warmup_schedule)
 
         else:
-            optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
         early_stopping = tf.keras.callbacks.EarlyStopping(
             monitor='f1',
-            min_delta=min_delta,
+            min_delta=min_f1_delta,
             verbose=verbose,
             patience=patience,
             mode='min',
@@ -133,7 +135,8 @@ class ModelTFHub(Model):
                         epochs=epochs,
                         validation_data=ds_test,
                         callbacks=[tensorboard_callback, early_stopping],
-                        class_weight=class_weight
+                        class_weight=class_weight,
+                        steps_per_epoch=steps_per_epoch
                         )
 
     def load(self, file_path):
@@ -143,7 +146,8 @@ class ModelTFHub(Model):
              file_path):  # A filepath ending in '.h5' or '.keras' will default to HDF5. Otherwise defaults to 'tf' format.
         self._model.save_weights(filepath=file_path)
 
-    def _calculate_initial_bias(self, size_pos, size_neg):
+    @staticmethod
+    def _calculate_initial_bias(size_pos, size_neg):
         initial_bias = np.log([size_pos / size_neg])
         return tf.keras.initializers.Constant(initial_bias)
 

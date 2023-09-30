@@ -70,21 +70,23 @@ class DatasetMaker:
         target = tf.cast(target, tf.float32)  # cast target column to float32
         return features, target
 
-    def make_dataset(self, input_path, batch_size, label_name="target", shuffle=True, buffer_size=60):
+    def make_dataset(self, input_path, label_name="target", shuffle=True, buffer_size=60):
         ds = tf.data.experimental.make_csv_dataset(
             input_path,
-            batch_size=batch_size,
+            batch_size=1,
             label_name=label_name,
             shuffle=shuffle,
             shuffle_buffer_size=buffer_size
         )
-        return ds.map(self._cast_target)
+        ds = ds.unbatch()
+        ds = ds.map(self._cast_target)
+        ds_size = sum(1 for _ in ds)
+        return ds, ds_size
 
-    def combine_datasets(self, pos_ds, neg_ds, batch_size, weights=None):
+    def combine_datasets(self, pos_ds, neg_ds, weights=None):
         if weights is None:
             weights = [0.5, 0.5]
         pos_ds = pos_ds.unbatch()
         neg_ds = neg_ds.unbatch()
-        resampled_ds = tf.data.Dataset.sample_from_datasets([pos_ds, neg_ds], weights=weights)
-        return resampled_ds.batch(batch_size)
+        return tf.data.Dataset.sample_from_datasets([pos_ds, neg_ds], weights=weights)
 
