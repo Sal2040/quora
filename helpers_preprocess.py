@@ -80,13 +80,21 @@ class DatasetMaker:
         )
         ds = ds.unbatch()
         ds = ds.map(self._cast_target)
-        ds_size = sum(1 for _ in ds)
+        with open(input_path, 'r') as f:
+            ds_size = sum(1 for _ in f) - 1
         return ds, ds_size
 
     def combine_datasets(self, pos_ds, neg_ds, weights=None):
-        if weights is None:
-            weights = [0.5, 0.5]
-        pos_ds = pos_ds.unbatch()
-        neg_ds = neg_ds.unbatch()
+        if weights:
+            try:
+                weights = [float(weight) for weight in weights]
+            except ValueError:
+                print("wrong format of weights")
+                raise
+        try:
+            pos_ds = pos_ds.unbatch()
+            neg_ds = neg_ds.unbatch()
+        except ValueError:
+            pass
         return tf.data.Dataset.sample_from_datasets([pos_ds, neg_ds], weights=weights)
 

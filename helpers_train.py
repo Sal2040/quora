@@ -67,30 +67,29 @@ class ModelTFHub(Model):
 
     def train(self,
               ds_train,
-              ds_test,
+              ds_val,
               batch_size,
               epochs,
               class_weight,
               learning_rate,
-              train_size_pos=None,
-              train_size_neg=None,
+              train_size_pos,
+              train_size_neg,
+              val_size,
               tensorboard_dir=None,
               min_f1_delta=0.0001,
-              verbose=1,
+              verbose=2,
               patience=5
               ):
         ds_train = ds_train.batch(batch_size)
-        ds_test = ds_test.batch(batch_size)
+        ds_val = ds_val.batch(batch_size)
 
-        if train_size_pos and train_size_neg:
-            train_data_size = train_size_pos + train_size_neg
-            initial_bias = self._calculate_initial_bias(train_size_pos, train_size_neg)
-            last_layer = self._model.get_layer(name='dense_last')
-            last_layer.bias_initializer = initial_bias
-        else:
-            train_data_size = sum(1 for _ in ds_train)
+        train_data_size = train_size_pos + train_size_neg
+        initial_bias = self._calculate_initial_bias(train_size_pos, train_size_neg)
+        last_layer = self._model.get_layer(name='dense_last')
+        last_layer.bias_initializer = initial_bias
 
         steps_per_epoch = int(train_data_size / batch_size)
+        validation_steps = int(val_size / batch_size)
 
         f1 = F1Score()
         loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
@@ -133,17 +132,18 @@ class ModelTFHub(Model):
 
         self._model.fit(ds_train,
                         epochs=epochs,
-                        validation_data=ds_test,
+                        validation_data=ds_val,
                         callbacks=[tensorboard_callback, early_stopping],
                         class_weight=class_weight,
-                        steps_per_epoch=steps_per_epoch
+                        steps_per_epoch=steps_per_epoch,
+                        validation_steps=validation_steps
                         )
 
     def load(self, file_path):
         self._model.load_weights(file_path)
 
-    def save(self,
-             file_path):  # A filepath ending in '.h5' or '.keras' will default to HDF5. Otherwise defaults to 'tf' format.
+    def save(self, file_path):  # A filepath ending with '.h5' or '.keras' will save the model weights to HDF5.
+                                # Otherwise defaults  to 'tf' format.
         self._model.save_weights(filepath=file_path)
 
     @staticmethod
@@ -160,3 +160,9 @@ class ModelTFHub(Model):
         self._fine_tuning = value
         layer = self._model.get_layer(name='encoder')
         layer.trainable = self._fine_tuning
+
+    def predict(self):
+        pass
+
+    def evaluate(self):
+        pass
