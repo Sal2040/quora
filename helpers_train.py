@@ -115,6 +115,10 @@ class ModelTFHub(Model):
         else:
             optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
+        self._model.compile(loss=loss,
+                            optimizer=optimizer,
+                            metrics=f1)
+
         early_stopping = tf.keras.callbacks.EarlyStopping(
             monitor='f1',
             min_delta=min_f1_delta,
@@ -125,10 +129,6 @@ class ModelTFHub(Model):
         )
 
         tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=tensorboard_dir, histogram_freq=1)
-
-        self._model.compile(loss=loss,
-                            optimizer=optimizer,
-                            metrics=f1)
 
         self._model.fit(ds_train,
                         epochs=epochs,
@@ -161,8 +161,26 @@ class ModelTFHub(Model):
         layer = self._model.get_layer(name='encoder')
         layer.trainable = self._fine_tuning
 
-    def predict(self):
-        pass
+    def predict(self, question):
+        if not isinstance(question, list):
+            question = [question]
+        return self._model.predict(question)
 
-    def evaluate(self):
-        pass
+    def evaluate(self,
+                 ds_test,
+                 ds_size,
+                 batch_size=32):
+        f1 = F1Score()
+        loss = tf.keras.losses.BinaryCrossentropy(from_logits=False)
+        self._model.compile(
+            loss=loss,
+            optimizer='adam',
+            metrics=f1)
+        ds_test = ds_test.batch(batch_size)
+        steps = int(ds_size / batch_size)
+        return self._model.evaluate(
+                ds_test,
+                verbose="auto",
+                steps=steps,
+                return_dict=True
+            )

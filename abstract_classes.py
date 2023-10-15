@@ -7,15 +7,15 @@ class Model(ABC):
         pass
 
     @abstractmethod
-    def train(self, *args, **kwargs):
+    def train(self, ds_train, *args, **kwargs):
         pass
 
     @abstractmethod
-    def predict(self):
+    def predict(self, question):
         pass
 
     @abstractmethod
-    def evaluate(self):
+    def evaluate(self, ds_test, *args, **kwargs):
         pass
 
     @abstractmethod
